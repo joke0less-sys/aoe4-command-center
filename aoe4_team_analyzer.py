@@ -546,7 +546,15 @@ def build_teammate_fazit_rows(games: list[NormalizedGame]) -> list[list[str]]:
 
 
 def game_result_text(game: NormalizedGame) -> str:
+    if game.ongoing:
+        return "Laufend"
+    if not is_review_ready(game):
+        return "Daten noch nicht final"
     return "Sieg" if game.won else "Niederlage"
+
+
+def is_review_ready(game: NormalizedGame) -> bool:
+    return not game.ongoing and game.duration > 0 and game.player.result in {"win", "loss"}
 
 
 def signed(value: int | None) -> str:
@@ -1027,6 +1035,33 @@ def short_player_plan(player: PlayerInGame, game: NormalizedGame, is_requester: 
     return f"- {prefix}: {action}"
 
 
+def timing_role_summary(game: NormalizedGame) -> str:
+    roles: list[str] = []
+    for player in [game.player, *game.allies]:
+        role, _ = guide_for_civ(player.civilization)
+        shown_role = known_role(player) or role
+        name = f"{player.name} (du)" if player.profile_id == game.player.profile_id else player.name
+        roles.append(f"{name}={shown_role}")
+    return "; ".join(roles)
+
+
+def pressure_player_names(game: NormalizedGame) -> str:
+    pressure_players = [
+        player
+        for player in [game.player, *game.allies]
+        if player.civilization in AGGRESSION_CIVS or known_role(player) == "Aggression/Raids"
+    ]
+    if not pressure_players:
+        pressure_players = [
+            player
+            for player in [game.player, *game.allies]
+            if "Map-Control" in (known_role(player) or guide_for_civ(player.civilization)[0])
+        ]
+    if not pressure_players:
+        return "Druckspieler"
+    return " + ".join(player.name for player in pressure_players[:2])
+
+
 def map_specific_plan(game: NormalizedGame) -> list[str]:
     name = game.map_name.lower()
     if "lipany" in name:
@@ -1164,8 +1199,8 @@ def build_pregame_plan(player_name: str, profile_id: int, game: NormalizedGame) 
 
     timing_lines = ["0-4: Scout: Flanken, Gold, Boomer, Raidgefahr."]
     if game.team_size >= 3:
-        timing_lines.append("5-8: Rollen callen: Druck / Schutz / Boom.")
-        timing_lines.append("9-12: Druckspieler geht auf Ziel, Team sichert nach.")
+        timing_lines.append(f"5-8: Rollen callen: {timing_role_summary(game)}.")
+        timing_lines.append(f"9-12: {pressure_player_names(game)} geht auf Ziel, Team sichert nach.")
     else:
         timing_lines.append("5-8: Entscheiden: Druck, 2 TC oder Fast Castle.")
         timing_lines.append("9-12: Map-Control oder gegnerischen Push abfangen.")

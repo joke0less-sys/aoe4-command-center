@@ -15,7 +15,9 @@ import aoe4_team_analyzer as analyzer
 
 
 POLL_SECONDS = 45
-HISTORY_PATH = Path("reports") / "verlauf.json"
+APP_DIR = Path(__file__).resolve().parent
+REPORTS_DIR = APP_DIR / "reports"
+HISTORY_PATH = REPORTS_DIR / "verlauf.json"
 HISTORY_LIMIT = 40
 
 
@@ -30,6 +32,7 @@ class CommandCenterApp:
         self.scan_thread: threading.Thread | None = None
         self.last_plan_game_id: int | None = None
         self.last_seen_ongoing_id: int | None = None
+        self.pending_review_game_ids: list[int] = []
         self.history_entries: list[dict[str, str]] = []
 
         self.url_var = tk.StringVar()
@@ -76,6 +79,8 @@ class CommandCenterApp:
 
         self.build_history_tab(notebook)
         self.load_history()
+        if not self.history_entries:
+            self.load_history_from_reports()
         self.refresh_history_list()
 
     def build_history_tab(self, notebook: ttk.Notebook) -> None:
@@ -171,8 +176,33 @@ class CommandCenterApp:
         except (OSError, json.JSONDecodeError):
             self.history_entries = []
 
+    def load_history_from_reports(self) -> None:
+        if not REPORTS_DIR.exists():
+            return
+        entries: list[dict[str, str]] = []
+        for path in REPORTS_DIR.glob("*.md"):
+            if path.name.endswith("_details.md"):
+                continue
+            kind = "Spielplan" if path.name.endswith("_spielplan.md") else "Auswertung"
+            detail_path = Path(str(path).replace("_kurzbericht.md", "_details.md"))
+            title_name = path.stem.replace("_kurzbericht", "").replace("_spielplan", "")
+            entries.append(
+                {
+                    "created_at": datetime.fromtimestamp(path.stat().st_mtime).strftime("%Y-%m-%d %H:%M"),
+                    "title": f"{kind}: {title_name}",
+                    "kind": kind,
+                    "player_name": title_name,
+                    "profile_id": "",
+                    "preview_path": str(path),
+                    "detail_path": str(detail_path) if detail_path.exists() else "",
+                }
+            )
+        self.history_entries = sorted(entries, key=lambda entry: entry["created_at"], reverse=True)[:HISTORY_LIMIT]
+        if self.history_entries:
+            self.save_history()
+
     def save_history(self) -> None:
-        HISTORY_PATH.parent.mkdir(exist_ok=True)
+        HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
         HISTORY_PATH.write_text(
             json.dumps(self.history_entries[:HISTORY_LIMIT], ensure_ascii=False, indent=2),
             encoding="utf-8",
@@ -213,7 +243,7 @@ class CommandCenterApp:
 
     def show_history_entry(self, index: int) -> None:
         entry = self.history_entries[index]
-        preview_path = Path(entry.get("preview_path", ""))
+        preview_path = self.report_path(entry.get("preview_path", ""))
         if preview_path.exists():
             text = preview_path.read_text(encoding="utf-8")
         else:
@@ -223,9 +253,12 @@ class CommandCenterApp:
         self.history_preview.see("1.0")
 
     def open_reports_folder(self) -> None:
-        reports = Path("reports")
-        reports.mkdir(exist_ok=True)
-        os.startfile(reports.resolve())
+        REPORTS_DIR.mkdir(parents=True, exist_ok=True)
+        os.startfile(REPORTS_DIR)
+
+    def report_path(self, value: str) -> Path:
+        path = Path(value)
+        return path if path.is_absolute() else APP_DIR / path
 
     def history_payload(
         self,
@@ -244,6 +277,13 @@ class CommandCenterApp:
             "preview_path": str(preview_path),
             "detail_path": str(detail_path or ""),
         }
+
+    def report_base(self, player_name: str, profile_id: int, game_id: int | None = None) -> str:
+        base = f"{analyzer.safe_slug(player_name)}_{profile_id}"
+        return f"{base}_{game_id}" if game_id is not None else base
+
+    def match_data_ready(self, game: analyzer.NormalizedGame) -> bool:
+        return analyzer.is_review_ready(game)
 
     def input_value(self) -> str:
         value = self.url_var.get().strip()
@@ -273,14 +313,15 @@ class CommandCenterApp:
                 if not games:
                     self.send_message("clear", "Keine passenden Spiele gefunden.")
                     return
-                out_dir = Path("reports")
-                out_dir.mkdir(exist_ok=True)
-                base = f"{analyzer.safe_slug(player_name)}_{profile_id}"
-                short_path = out_dir / f"{base}_kurzbericht.md"
-                detail_path = out_dir / f"{base}_details.md"
-                short_text = analyzer.build_short_report(player_name, profile_id, games)
-                short_path.write_text(short_text, encoding="utf-8")
-                detail_path.write_text(analyzer.build_detail_report(player_name, profile_id, games), encoding="utf-8")
+                if not self.match_data_ready(games[0]):
+                    self.send_message(
+                        "clear",
+                        "Das neueste Spiel ist noch nicht vollstaendig bei AoE4World angekommen. "
+                        "Bitte in 1-2 Minuten erneut auswerten.",
+                    )
+                    self.send_message("status", "Warte auf fertige Matchdaten.")
+                    return
+                short_text, short_path, detail_path = self.save_short_report(player_name, profile_id, games)
                 self.send_message("clear", short_text)
                 self.send_message(
                     "history",
@@ -302,9 +343,9 @@ class CommandCenterApp:
                     self.send_message("clear", "Kein passendes Spiel gefunden.")
                     return
                 plan_text = analyzer.build_pregame_plan(player_name, profile_id, games[0])
-                out_dir = Path("reports")
-                out_dir.mkdir(exist_ok=True)
-                path = out_dir / f"{analyzer.safe_slug(player_name)}_{profile_id}_spielplan.md"
+                out_dir = REPORTS_DIR
+                out_dir.mkdir(parents=True, exist_ok=True)
+                path = out_dir / f"{self.report_base(player_name, profile_id)}_spielplan.md"
                 path.write_text(plan_text, encoding="utf-8")
                 self.send_message("clear", plan_text)
                 self.send_message("history", self.history_payload("Spielplan", player_name, profile_id, path))
@@ -322,12 +363,75 @@ class CommandCenterApp:
         self.scan_stop.clear()
         self.last_plan_game_id = None
         self.last_seen_ongoing_id = None
+        self.pending_review_game_ids = []
         self.scan_thread = threading.Thread(target=self.scan_loop, daemon=True)
         self.scan_thread.start()
 
     def stop_scan(self) -> None:
         self.scan_stop.set()
         self.scan_status.set("Scan wird gestoppt...")
+
+    def queue_pending_review(self, game_id: int | None) -> None:
+        if game_id is None or game_id in self.pending_review_game_ids:
+            return
+        self.pending_review_game_ids.append(game_id)
+
+    def save_short_report(
+        self,
+        player_name: str,
+        profile_id: int,
+        games: list[analyzer.NormalizedGame],
+        game_id: int | None = None,
+    ) -> tuple[str, Path, Path]:
+        text = analyzer.build_short_report(player_name, profile_id, games)
+        out_dir = REPORTS_DIR
+        out_dir.mkdir(parents=True, exist_ok=True)
+        base = self.report_base(player_name, profile_id, game_id)
+        short_path = out_dir / f"{base}_kurzbericht.md"
+        detail_path = out_dir / f"{base}_details.md"
+        short_path.write_text(text, encoding="utf-8")
+        detail_path.write_text(analyzer.build_detail_report(player_name, profile_id, games), encoding="utf-8")
+        return text, short_path, detail_path
+
+    def process_pending_reviews(
+        self,
+        player_name: str,
+        profile_id: int,
+        games: list[analyzer.NormalizedGame],
+        quiet: bool = False,
+    ) -> bool:
+        if not self.pending_review_game_ids:
+            return False
+
+        completed: list[int] = []
+        waiting = False
+        for game_id in list(self.pending_review_game_ids):
+            focused, found = analyzer.focus_games(games, game_id)
+            if not found:
+                waiting = True
+                continue
+            if not self.match_data_ready(focused[0]):
+                waiting = True
+                continue
+
+            _, short_path, detail_path = self.save_short_report(player_name, profile_id, focused, game_id)
+            self.send_message(
+                "history",
+                self.history_payload("Live-Kurzauswertung", player_name, profile_id, short_path, detail_path),
+            )
+            completed.append(game_id)
+
+        for game_id in completed:
+            self.pending_review_game_ids.remove(game_id)
+
+        if completed and not quiet:
+            self.send_message("status", "Kurzauswertung fuer beendetes Spiel im Verlauf gespeichert.")
+        elif waiting and not quiet:
+            self.send_message(
+                "status",
+                "Warte auf vollstaendige Matchdaten fuer beendete Spiele; Live-Scan laeuft weiter...",
+            )
+        return bool(completed)
 
     def scan_loop(self) -> None:
         try:
@@ -336,23 +440,28 @@ class CommandCenterApp:
                 profile_id, player_name, games, _ = self.load_games(limit=40)
                 ongoing = next((game for game in games if game.ongoing), None)
 
+                if ongoing:
+                    if self.last_seen_ongoing_id and ongoing.game_id != self.last_seen_ongoing_id:
+                        self.queue_pending_review(self.last_seen_ongoing_id)
+                    self.last_seen_ongoing_id = ongoing.game_id
+
                 if ongoing and ongoing.game_id != self.last_plan_game_id:
                     self.last_plan_game_id = ongoing.game_id
-                    self.last_seen_ongoing_id = ongoing.game_id
                     text = analyzer.build_pregame_plan(player_name, profile_id, ongoing)
+                    out_dir = REPORTS_DIR
+                    out_dir.mkdir(parents=True, exist_ok=True)
+                    plan_path = out_dir / f"{self.report_base(player_name, profile_id, ongoing.game_id)}_spielplan.md"
+                    plan_path.write_text(text, encoding="utf-8")
                     self.send_message("clear", text)
+                    self.send_message("history", self.history_payload("Live-Spielplan", player_name, profile_id, plan_path))
                     self.send_message("status", f"Laufendes Spiel erkannt: {ongoing.game_id}. Strategie erzeugt.")
                 elif self.last_seen_ongoing_id and not ongoing:
-                    focused, found = analyzer.focus_games(games, self.last_seen_ongoing_id)
-                    if found:
-                        text = analyzer.build_short_report(player_name, profile_id, focused)
-                        self.send_message("text", "Spiel beendet. Kurzauswertung:\n\n" + text)
-                        self.send_message("status", "Spiel beendet. Kurzauswertung erstellt.")
-                        self.last_seen_ongoing_id = None
-                    else:
-                        self.send_message("status", "Spiel nicht mehr laufend, warte auf fertige Matchdaten...")
+                    self.queue_pending_review(self.last_seen_ongoing_id)
+                    self.last_seen_ongoing_id = None
                 else:
                     self.send_message("status", "Kein laufendes Spiel gefunden. Scanne weiter...")
+
+                self.process_pending_reviews(player_name, profile_id, games, quiet=ongoing is not None)
 
                 for _ in range(POLL_SECONDS):
                     if self.scan_stop.is_set():
