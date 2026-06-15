@@ -1,0 +1,10 @@
+# Python Cache
+__pycache__/
+*.pyc
+
+# erzeugte Reports
+reports/
+
+# Windows
+Thumbs.db
+Desktop.ini
