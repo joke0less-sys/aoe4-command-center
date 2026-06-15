@@ -18,11 +18,13 @@ Am einfachsten:
    - `Live-Scan starten`
 
 Der Kurzbericht oder Spielplan wird direkt im Fenster angezeigt. Dateien landen zusaetzlich im Ordner `reports`.
+Im Tab `Verlauf` findest du die letzten gespeicherten Auswertungen und Spielplaene wieder.
 
 Es werden zwei Dateien erzeugt:
 
 - `*_kurzbericht.md`: kurze Auswertung des letzten Spiels mit Tipps
 - `*_details.md`: genaue Tabellen, Team-Konstellationen und Vergleichsdaten
+- `verlauf.json`: Verlauf der zuletzt erzeugten Auswertungen fuer die Oberflaeche
 
 Beim Early-Game-Spielplan wird eine Datei erzeugt:
 

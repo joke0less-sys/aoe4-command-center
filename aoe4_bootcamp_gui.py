@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import queue
+import json
+import os
 import threading
 import time
 import tkinter as tk
+from datetime import datetime
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -12,6 +15,8 @@ import aoe4_team_analyzer as analyzer
 
 
 POLL_SECONDS = 45
+HISTORY_PATH = Path("reports") / "verlauf.json"
+HISTORY_LIMIT = 40
 
 
 class CommandCenterApp:
@@ -20,11 +25,12 @@ class CommandCenterApp:
         self.root.title("AoE4 Command Center")
         self.root.geometry("980x760")
         self.root.minsize(850, 620)
-        self.message_queue: queue.Queue[tuple[str, str]] = queue.Queue()
+        self.message_queue: queue.Queue[tuple[str, object]] = queue.Queue()
         self.scan_stop = threading.Event()
         self.scan_thread: threading.Thread | None = None
         self.last_plan_game_id: int | None = None
         self.last_seen_ongoing_id: int | None = None
+        self.history_entries: list[dict[str, str]] = []
 
         self.url_var = tk.StringVar()
         self.match_type = tk.StringVar(value="ranked")
@@ -57,13 +63,50 @@ class CommandCenterApp:
 
         ttk.Label(outer, textvariable=self.scan_status).pack(anchor=tk.W, pady=(0, 8))
 
-        output_frame = ttk.LabelFrame(outer, text="Kurzfazit / Spielplan", padding=8)
-        output_frame.pack(fill=tk.BOTH, expand=True)
+        notebook = ttk.Notebook(outer)
+        notebook.pack(fill=tk.BOTH, expand=True)
+
+        output_frame = ttk.Frame(notebook, padding=8)
+        notebook.add(output_frame, text="Kurzfazit / Spielplan")
         self.output = tk.Text(output_frame, wrap=tk.WORD, height=28)
         self.output.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scroll = ttk.Scrollbar(output_frame, command=self.output.yview)
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.output.configure(yscrollcommand=scroll.set)
+
+        self.build_history_tab(notebook)
+        self.load_history()
+        self.refresh_history_list()
+
+    def build_history_tab(self, notebook: ttk.Notebook) -> None:
+        history_frame = ttk.Frame(notebook, padding=8)
+        notebook.add(history_frame, text="Verlauf")
+
+        left = ttk.Frame(history_frame)
+        left.pack(side=tk.LEFT, fill=tk.Y, padx=(0, 8))
+
+        ttk.Label(left, text="Gespeicherte Auswertungen").pack(anchor=tk.W)
+        list_frame = ttk.Frame(left)
+        list_frame.pack(fill=tk.Y, expand=True, pady=(4, 8))
+        self.history_list = tk.Listbox(list_frame, width=42, height=22)
+        self.history_list.pack(side=tk.LEFT, fill=tk.Y, expand=True)
+        history_scroll = ttk.Scrollbar(list_frame, command=self.history_list.yview)
+        history_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.history_list.configure(yscrollcommand=history_scroll.set)
+        self.history_list.bind("<<ListboxSelect>>", self.show_selected_history)
+
+        button_row = ttk.Frame(left)
+        button_row.pack(fill=tk.X)
+        ttk.Button(button_row, text="Anzeigen", command=self.show_selected_history).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(button_row, text="Ordner oeffnen", command=self.open_reports_folder).pack(side=tk.LEFT)
+
+        right = ttk.Frame(history_frame)
+        right.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.history_preview = tk.Text(right, wrap=tk.WORD, height=24)
+        self.history_preview.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        preview_scroll = ttk.Scrollbar(right, command=self.history_preview.yview)
+        preview_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.history_preview.configure(yscrollcommand=preview_scroll.set)
 
     def build_mode_controls(self, parent: ttk.Frame) -> None:
         mode_box = ttk.LabelFrame(parent, text="Modus", padding=8)
@@ -100,22 +143,107 @@ class CommandCenterApp:
         self.output.insert(tk.END, text.rstrip() + "\n\n")
         self.output.see(tk.END)
 
-    def send_message(self, kind: str, text: str) -> None:
-        self.message_queue.put((kind, text))
+    def send_message(self, kind: str, payload: object) -> None:
+        self.message_queue.put((kind, payload))
 
     def drain_messages(self) -> None:
         while True:
             try:
-                kind, text = self.message_queue.get_nowait()
+                kind, payload = self.message_queue.get_nowait()
             except queue.Empty:
                 break
             if kind == "status":
-                self.scan_status.set(text)
+                self.scan_status.set(str(payload))
             elif kind == "clear":
-                self.append_output(text, clear=True)
+                self.append_output(str(payload), clear=True)
+            elif kind == "history":
+                self.add_history_entry(payload)
             else:
-                self.append_output(text)
+                self.append_output(str(payload))
         self.root.after(200, self.drain_messages)
+
+    def load_history(self) -> None:
+        try:
+            if HISTORY_PATH.exists():
+                loaded = json.loads(HISTORY_PATH.read_text(encoding="utf-8"))
+                if isinstance(loaded, list):
+                    self.history_entries = [entry for entry in loaded if isinstance(entry, dict)]
+        except (OSError, json.JSONDecodeError):
+            self.history_entries = []
+
+    def save_history(self) -> None:
+        HISTORY_PATH.parent.mkdir(exist_ok=True)
+        HISTORY_PATH.write_text(
+            json.dumps(self.history_entries[:HISTORY_LIMIT], ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+
+    def add_history_entry(self, payload: object) -> None:
+        if not isinstance(payload, dict):
+            return
+        entry = {str(key): str(value) for key, value in payload.items()}
+        self.history_entries = [entry, *self.history_entries]
+        self.history_entries = self.history_entries[:HISTORY_LIMIT]
+        self.save_history()
+        self.refresh_history_list()
+        self.history_list.selection_clear(0, tk.END)
+        self.history_list.selection_set(0)
+        self.show_history_entry(0)
+
+    def refresh_history_list(self) -> None:
+        self.history_list.delete(0, tk.END)
+        for entry in self.history_entries:
+            created_at = entry.get("created_at", "?")
+            title = entry.get("title", "Auswertung")
+            self.history_list.insert(tk.END, f"{created_at} - {title}")
+
+    def selected_history_index(self) -> int | None:
+        selection = self.history_list.curselection()
+        if not selection:
+            return None
+        index = int(selection[0])
+        if index >= len(self.history_entries):
+            return None
+        return index
+
+    def show_selected_history(self, _event: object | None = None) -> None:
+        index = self.selected_history_index()
+        if index is not None:
+            self.show_history_entry(index)
+
+    def show_history_entry(self, index: int) -> None:
+        entry = self.history_entries[index]
+        preview_path = Path(entry.get("preview_path", ""))
+        if preview_path.exists():
+            text = preview_path.read_text(encoding="utf-8")
+        else:
+            text = "Die Datei zu diesem Verlaufseintrag wurde nicht gefunden."
+        self.history_preview.delete("1.0", tk.END)
+        self.history_preview.insert(tk.END, text)
+        self.history_preview.see("1.0")
+
+    def open_reports_folder(self) -> None:
+        reports = Path("reports")
+        reports.mkdir(exist_ok=True)
+        os.startfile(reports.resolve())
+
+    def history_payload(
+        self,
+        kind: str,
+        player_name: str,
+        profile_id: int,
+        preview_path: Path,
+        detail_path: Path | None = None,
+    ) -> dict[str, str]:
+        return {
+            "created_at": datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "title": f"{kind}: {player_name}",
+            "kind": kind,
+            "player_name": player_name,
+            "profile_id": str(profile_id),
+            "preview_path": str(preview_path),
+            "detail_path": str(detail_path or ""),
+        }
 
     def input_value(self) -> str:
         value = self.url_var.get().strip()
@@ -154,6 +282,10 @@ class CommandCenterApp:
                 short_path.write_text(short_text, encoding="utf-8")
                 detail_path.write_text(analyzer.build_detail_report(player_name, profile_id, games), encoding="utf-8")
                 self.send_message("clear", short_text)
+                self.send_message(
+                    "history",
+                    self.history_payload("Auswertung", player_name, profile_id, short_path, detail_path),
+                )
                 self.send_message("status", f"Auswertung gespeichert: {short_path} und {detail_path}")
             except Exception as exc:
                 self.send_message("status", "Fehler.")
@@ -175,6 +307,7 @@ class CommandCenterApp:
                 path = out_dir / f"{analyzer.safe_slug(player_name)}_{profile_id}_spielplan.md"
                 path.write_text(plan_text, encoding="utf-8")
                 self.send_message("clear", plan_text)
+                self.send_message("history", self.history_payload("Spielplan", player_name, profile_id, path))
                 self.send_message("status", f"Spielplan gespeichert: {path}")
             except Exception as exc:
                 self.send_message("status", "Fehler.")
