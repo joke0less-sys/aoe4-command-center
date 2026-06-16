@@ -83,10 +83,27 @@ class CommandCenterApp:
         self.output.configure(yscrollcommand=scroll.set)
 
         self.build_history_tab(notebook)
+        self.build_glossary_tab(notebook)
         self.load_history()
         if not self.history_entries:
             self.load_history_from_reports()
         self.refresh_history_list()
+
+    def build_glossary_tab(self, notebook: ttk.Notebook) -> None:
+        glossary_frame = ttk.Frame(notebook, padding=8)
+        notebook.add(glossary_frame, text="Glossar")
+
+        glossary_text = tk.Text(glossary_frame, wrap=tk.WORD, height=24)
+        glossary_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scroll = ttk.Scrollbar(glossary_frame, command=glossary_text.yview)
+        scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        glossary_text.configure(yscrollcommand=scroll.set)
+
+        for term, description in analyzer.GLOSSARY.items():
+            glossary_text.insert(tk.END, f"{term}\n", "term")
+            glossary_text.insert(tk.END, f"{description}\n\n")
+        glossary_text.tag_configure("term", font=("Segoe UI", 10, "bold"))
+        glossary_text.configure(state=tk.DISABLED)
 
     def build_history_tab(self, notebook: ttk.Notebook) -> None:
         history_frame = ttk.Frame(notebook, padding=8)

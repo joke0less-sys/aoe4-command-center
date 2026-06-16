@@ -101,6 +101,29 @@ SCOUT_STATES = {
     "trade": "Trade/Boom",
 }
 
+GLOSSARY = {
+    "Tempo": (
+        "Spielweise, bei der du die Initiative haeltst: frueh Druck machen, Timing-Fenster nutzen "
+        "und den Gegner zu Reaktionen zwingen, statt passiv nur zu boomen."
+    ),
+    "Boom": "Starker Wirtschaftsaufbau, oft mit 2 TC, Trade oder Eco-Upgrades; kurzfristig schwach, spaeter stark.",
+    "2 TC": "Zweites Dorfzentrum. Mehr Dorfbewohner und Eco, aber anfangs weniger Armee und anfaelliger gegen Druck.",
+    "Fast Castle": "Schnell in Age III gehen, um Relikte, starke Techs oder Castle-Units frueh zu nutzen.",
+    "Feudal-Army": "Armee in Age II. Ziel: Druck, Defense oder Map-Control bevor Castle-Timings kommen.",
+    "Map-Control": "Wichtige Orte halten: Mitte, Relikte, Sacred Sites, Gold, Trade-Route oder Engstellen.",
+    "Timing": "Kurzes Fenster, in dem dein Team staerker ist, z. B. neue Age, neue Tech oder erste grosse Army.",
+    "Power-Spike": "Moment, in dem eine Civ/Army ploetzlich deutlich staerker wird.",
+    "All-in": "Sehr harter Angriff mit wenig Eco-Backup. Wenn er scheitert, faellt man oft stark zurueck.",
+    "Trade": "Haendler-Wirtschaft. Sehr stark spaeter, aber Route muss frueh gescoutet und geschuetzt werden.",
+    "Relikte": "Goldquelle ab Castle Age. Besonders wichtig fuer HRE/Japanese/Relikt-Civs.",
+    "Sacred Sites": "Heilige Staetten. Geben Gold und koennen mit Delhi/Map-Control viel Druck erzeugen.",
+    "Scout": "Fruehe Information sammeln: Gold, Produktion, 2 TC, Fast Castle, Army, Trade und offene Flanken.",
+    "Push": "Gemeinsamer Angriff auf ein Ziel, idealerweise mit vorherigem Sammeln statt einzelnem Reinlaufen.",
+    "Tech": "Technologien oder Age-Up priorisieren statt sofort mehr Armee zu bauen.",
+    "Eco": "Wirtschaft: Dorfbewohner, Nahrung, Holz, Gold, Stein, Upgrades, 2 TC, Trade.",
+    "Support": "Teamrolle, die Druckspieler deckt, Vision gibt, Defense stellt oder spaeter Army-Masse liefert.",
+}
+
 CIV_PLAYBOOK = {
     "English": {
         "focus": "Feudal-Armee",
