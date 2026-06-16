@@ -4,10 +4,13 @@ from __future__ import annotations
 import queue
 import json
 import os
+import socket
 import threading
 import time
+import urllib.parse
 import tkinter as tk
 from datetime import datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -19,6 +22,7 @@ APP_DIR = Path(__file__).resolve().parent
 REPORTS_DIR = APP_DIR / "reports"
 HISTORY_PATH = REPORTS_DIR / "verlauf.json"
 HISTORY_LIMIT = 40
+TABLET_PORT = 8765
 
 
 class CommandCenterApp:
@@ -41,6 +45,9 @@ class CommandCenterApp:
         self.strategy_text: tk.Text | None = None
         self.touch_window: tk.Toplevel | None = None
         self.touch_frame: ttk.Frame | None = None
+        self.tablet_server: ThreadingHTTPServer | None = None
+        self.tablet_thread: threading.Thread | None = None
+        self.current_cockpit_data: dict[str, object] | None = None
         self.latest_output_text = ""
 
         self.url_var = tk.StringVar()
@@ -49,7 +56,15 @@ class CommandCenterApp:
         self.mode_vars: dict[str, tk.BooleanVar] = {}
 
         self.build_ui()
+        self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.root.after(200, self.drain_messages)
+
+    def on_close(self) -> None:
+        self.scan_stop.set()
+        if self.tablet_server:
+            self.tablet_server.shutdown()
+            self.tablet_server.server_close()
+        self.root.destroy()
 
     def build_ui(self) -> None:
         outer = ttk.Frame(self.root, padding=12)
@@ -80,7 +95,8 @@ class CommandCenterApp:
         window_actions = ttk.LabelFrame(actions, text="Fenster/Ansicht", padding=6)
         window_actions.pack(side=tk.LEFT, fill=tk.X, expand=True)
         ttk.Button(window_actions, text="Strategie-Fenster", command=self.open_strategy_window).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(window_actions, text="Touch-/Cockpit-Fenster", command=self.open_touch_window).pack(side=tk.LEFT)
+        ttk.Button(window_actions, text="Touch-/Cockpit-Fenster", command=self.open_touch_window).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(window_actions, text="Tablet-Browser", command=self.start_tablet_server).pack(side=tk.LEFT)
 
         ttk.Label(outer, textvariable=self.scan_status).pack(anchor=tk.W, pady=(0, 8))
 
@@ -206,6 +222,10 @@ class CommandCenterApp:
                 self.add_history_entry(payload)
             elif kind == "cockpit":
                 self.show_cockpit(payload)
+            elif kind == "scout":
+                self.apply_scout_payload(payload)
+            elif kind == "refresh_cockpit":
+                self.update_cockpit_from_scout()
             else:
                 self.append_output(str(payload))
         self.root.after(200, self.drain_messages)
@@ -237,11 +257,26 @@ class CommandCenterApp:
         self.render_cockpit(data)
 
     def set_enemy_scout(self, profile_id: int, state: str) -> None:
+        self.toggle_scout_state(profile_id, state)
+        self.update_cockpit_from_scout()
+
+    def toggle_scout_state(self, profile_id: int, state: str) -> None:
         if self.scout_states.get(profile_id) == state:
             self.scout_states.pop(profile_id, None)
         else:
             self.scout_states[profile_id] = state
-        self.update_cockpit_from_scout()
+
+    def apply_scout_payload(self, payload: object) -> None:
+        if not isinstance(payload, dict):
+            return
+        try:
+            profile_id = int(str(payload.get("profile_id", "0")))
+        except ValueError:
+            return
+        state = str(payload.get("state", ""))
+        if not state:
+            return
+        self.set_enemy_scout(profile_id, state)
 
     def matchup_summary(self, stats: object, detail: bool = False) -> str:
         if not isinstance(stats, dict):
@@ -296,7 +331,127 @@ class CommandCenterApp:
         self.touch_window = None
         self.touch_frame = None
 
+    def local_ip(self) -> str:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+                sock.connect(("8.8.8.8", 80))
+                return sock.getsockname()[0]
+        except OSError:
+            return "127.0.0.1"
+
+    def tablet_state(self) -> dict[str, object]:
+        return {
+            "cockpit": self.current_cockpit_data or {},
+            "scout_states": {str(key): value for key, value in self.scout_states.items()},
+        }
+
+    def tablet_html(self) -> str:
+        return """<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AoE4 Touch-Cockpit</title>
+<style>
+body{font-family:Segoe UI,Arial,sans-serif;margin:0;background:#f5f5f5;color:#111}
+header{position:sticky;top:0;background:#fff;border-bottom:1px solid #ccc;padding:12px;z-index:2}
+h1{font-size:20px;margin:0 0 4px}
+.meta{font-size:14px;color:#444}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;padding:10px}
+.card,.panel{background:#fff;border:1px solid #ccc;border-radius:6px;padding:10px}
+.name{font-weight:700;font-size:17px}.civ{color:#333;margin-bottom:6px}.expected{font-weight:700;margin:6px 0}
+.reaction{min-height:42px;font-size:14px}
+.buttons{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+button{font-size:16px;padding:12px 6px;border:1px solid #999;border-radius:6px;background:#fafafa}
+button.active{background:#1f6feb;color:#fff;border-color:#1f6feb}
+.panels{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:10px;padding:0 10px 10px}
+ul{padding-left:18px;margin:6px 0}li{margin:5px 0}
+</style>
+</head>
+<body>
+<header><h1 id="title">AoE4 Touch-Cockpit</h1><div class="meta" id="meta">Warte auf Spielplan...</div></header>
+<main><section class="grid" id="enemies"></section><section class="panels" id="panels"></section></main>
+<script>
+const buttons=[['2tc','2 TC'],['fc','Fast Castle'],['trade','Trade'],['army','Army'],['feudal','Feudal'],['castle','Castle'],['imperial','Imperial'],['unclear','Unklar']];
+async function setScout(pid,state){await fetch('/set?pid='+encodeURIComponent(pid)+'&state='+encodeURIComponent(state)); await load();}
+function list(lines){return '<ul>'+((lines||[]).map(x=>'<li>'+escapeHtml(x)+'</li>').join(''))+'</ul>'}
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
+async function load(){
+ const res=await fetch('/state',{cache:'no-store'}); const state=await res.json(); const data=state.cockpit||{}; const scouts=state.scout_states||{};
+ document.getElementById('title').textContent=(data.kind||'?')+' | '+(data.map||'?')+' | Game '+(data.game_id||'?');
+ let stats=data.matchup_stats||{}; document.getElementById('meta').textContent=stats.available&&stats.win_rate!=null?'Team-Matchup: '+Number(stats.win_rate).toFixed(1)+'% Winrate':'';
+ const enemies=document.getElementById('enemies'); enemies.innerHTML='';
+ (data.enemies||[]).forEach(e=>{
+   const pid=e.profile_id; const active=scouts[String(pid)]||'';
+   const card=document.createElement('div'); card.className='card';
+   card.innerHTML='<div class="name">'+escapeHtml(e.name||'?')+'</div><div class="civ">'+escapeHtml(e.civ||'?')+'</div><div class="expected">'+escapeHtml(e.expected||'')+'</div><div class="reaction">'+escapeHtml(e.reaction||'')+'</div><div class="buttons"></div>';
+   const wrap=card.querySelector('.buttons');
+   buttons.forEach(([key,label])=>{const b=document.createElement('button'); b.textContent=label; if(active===key)b.className='active'; b.onclick=()=>setScout(pid,key); wrap.appendChild(b);});
+   enemies.appendChild(card);
+ });
+ const steps=data.steps||{}; document.getElementById('panels').innerHTML='<div class="panel"><b>Reaktionsplan</b>'+list(steps.after_scout)+'</div><div class="panel"><b>Push-Timing</b>'+list(steps.push)+'</div><div class="panel"><b>Scout-Check</b>'+list(steps.scout_now)+'</div>';
+}
+load(); setInterval(load,2000);
+</script>
+</body>
+</html>"""
+
+    def start_tablet_server(self) -> None:
+        if self.tablet_server:
+            url = f"http://{self.local_ip()}:{TABLET_PORT}/"
+            self.scan_status.set(f"Tablet-Browser: {url}")
+            return
+
+        app = self
+
+        class TabletHandler(BaseHTTPRequestHandler):
+            def log_message(self, _format: str, *_args: object) -> None:
+                return
+
+            def send_text(self, text: str, content_type: str) -> None:
+                raw = text.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(raw)))
+                self.send_header("Cache-Control", "no-store")
+                self.end_headers()
+                self.wfile.write(raw)
+
+            def do_GET(self) -> None:
+                parsed = urllib.parse.urlparse(self.path)
+                if parsed.path == "/":
+                    self.send_text(app.tablet_html(), "text/html; charset=utf-8")
+                    return
+                if parsed.path == "/state":
+                    self.send_text(json.dumps(app.tablet_state(), ensure_ascii=False), "application/json; charset=utf-8")
+                    return
+                if parsed.path == "/set":
+                    params = urllib.parse.parse_qs(parsed.query)
+                    pid = params.get("pid", [""])[0]
+                    state = params.get("state", [""])[0]
+                    try:
+                        app.toggle_scout_state(int(pid), state)
+                        app.send_message("refresh_cockpit", "")
+                    except ValueError:
+                        pass
+                    self.send_text('{"ok":true}', "application/json; charset=utf-8")
+                    return
+                self.send_error(404)
+
+        try:
+            self.tablet_server = ThreadingHTTPServer(("0.0.0.0", TABLET_PORT), TabletHandler)
+        except OSError as exc:
+            messagebox.showerror("Tablet-Browser", f"Tablet-Server konnte nicht starten: {exc}")
+            return
+
+        self.tablet_thread = threading.Thread(target=self.tablet_server.serve_forever, daemon=True)
+        self.tablet_thread.start()
+        url = f"http://{self.local_ip()}:{TABLET_PORT}/"
+        self.scan_status.set(f"Tablet-Browser: {url}")
+        messagebox.showinfo("Tablet-Browser", f"Oeffne diese Adresse am Tablet:\n\n{url}")
+
     def render_cockpit(self, data: dict[str, object]) -> None:
+        self.current_cockpit_data = data
         self.clear_cockpit()
 
         header = ttk.Frame(self.cockpit_frame)
