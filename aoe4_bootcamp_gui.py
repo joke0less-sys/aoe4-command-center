@@ -14,7 +14,7 @@ from tkinter import messagebox, ttk
 import aoe4_team_analyzer as analyzer
 
 
-POLL_SECONDS = 45
+POLL_SECONDS = 25
 APP_DIR = Path(__file__).resolve().parent
 REPORTS_DIR = APP_DIR / "reports"
 HISTORY_PATH = REPORTS_DIR / "verlauf.json"
@@ -34,6 +34,9 @@ class CommandCenterApp:
         self.last_seen_ongoing_id: int | None = None
         self.pending_review_game_ids: list[int] = []
         self.history_entries: list[dict[str, str]] = []
+        self.current_cockpit_context: tuple[str, int, analyzer.NormalizedGame] | None = None
+        self.current_cockpit_stats: dict[str, object] | None = None
+        self.scout_states: dict[int, str] = {}
 
         self.url_var = tk.StringVar()
         self.match_type = tk.StringVar(value="ranked")
@@ -71,6 +74,8 @@ class CommandCenterApp:
 
         output_frame = ttk.Frame(notebook, padding=8)
         notebook.add(output_frame, text="Kurzfazit / Spielplan")
+        self.cockpit_frame = ttk.Frame(output_frame)
+        self.cockpit_frame.pack(fill=tk.X, pady=(0, 8))
         self.output = tk.Text(output_frame, wrap=tk.WORD, height=28)
         self.output.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scroll = ttk.Scrollbar(output_frame, command=self.output.yview)
@@ -163,9 +168,109 @@ class CommandCenterApp:
                 self.append_output(str(payload), clear=True)
             elif kind == "history":
                 self.add_history_entry(payload)
+            elif kind == "cockpit":
+                self.show_cockpit(payload)
             else:
                 self.append_output(str(payload))
         self.root.after(200, self.drain_messages)
+
+    def clear_cockpit(self) -> None:
+        for child in self.cockpit_frame.winfo_children():
+            child.destroy()
+
+    def show_cockpit(self, payload: object) -> None:
+        if not isinstance(payload, dict):
+            return
+        context = payload.get("context")
+        data = payload.get("data")
+        if isinstance(context, tuple) and len(context) == 3:
+            player_name, profile_id, game = context
+            self.current_cockpit_context = (str(player_name), int(profile_id), game)
+            self.scout_states = {}
+        if isinstance(data, dict):
+            self.current_cockpit_stats = data.get("matchup_stats") if isinstance(data.get("matchup_stats"), dict) else None
+            self.render_cockpit(data)
+
+    def update_cockpit_from_scout(self) -> None:
+        if not self.current_cockpit_context:
+            return
+        player_name, profile_id, game = self.current_cockpit_context
+        data = analyzer.build_live_cockpit_data(player_name, profile_id, game, self.scout_states)
+        if self.current_cockpit_stats is not None:
+            data["matchup_stats"] = self.current_cockpit_stats
+        self.render_cockpit(data)
+
+    def set_enemy_scout(self, profile_id: int, state: str) -> None:
+        if self.scout_states.get(profile_id) == state:
+            self.scout_states.pop(profile_id, None)
+        else:
+            self.scout_states[profile_id] = state
+        self.update_cockpit_from_scout()
+
+    def render_cockpit(self, data: dict[str, object]) -> None:
+        self.clear_cockpit()
+
+        header = ttk.Frame(self.cockpit_frame)
+        header.pack(fill=tk.X, pady=(0, 6))
+        title = f"{data.get('kind', '?')} auf {data.get('map', '?')}"
+        ttk.Label(header, text=title, font=("Segoe UI", 12, "bold")).pack(side=tk.LEFT)
+        stats = data.get("matchup_stats")
+        if isinstance(stats, dict):
+            ttk.Label(header, text=str(stats.get("summary", ""))).pack(side=tk.RIGHT)
+
+        top = ttk.Frame(self.cockpit_frame)
+        top.pack(fill=tk.X)
+        team_box = ttk.LabelFrame(top, text="Team-Aufgaben", padding=6)
+        team_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 6))
+        enemy_box = ttk.LabelFrame(top, text="Gegner scouten", padding=6)
+        enemy_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        team = data.get("team", [])
+        if isinstance(team, list):
+            for idx, raw_card in enumerate(team):
+                if not isinstance(raw_card, dict):
+                    continue
+                card = ttk.LabelFrame(team_box, text=str(raw_card.get("name", "?")), padding=6)
+                card.grid(row=0, column=idx, sticky="nsew", padx=3)
+                team_box.columnconfigure(idx, weight=1, uniform="team")
+                ttk.Label(card, text=str(raw_card.get("focus", "?")), font=("Segoe UI", 10, "bold")).pack(anchor=tk.W)
+                ttk.Label(card, text=str(raw_card.get("civ", ""))).pack(anchor=tk.W)
+                ttk.Label(card, text=str(raw_card.get("build", "")), wraplength=210).pack(anchor=tk.W, pady=(3, 0))
+                ttk.Label(card, text=str(raw_card.get("timing", "")), wraplength=210).pack(anchor=tk.W, pady=(3, 0))
+
+        enemies = data.get("enemies", [])
+        if isinstance(enemies, list):
+            for row, raw_enemy in enumerate(enemies):
+                if not isinstance(raw_enemy, dict):
+                    continue
+                pid = int(str(raw_enemy.get("profile_id", "0")) or 0)
+                ttk.Label(enemy_box, text=f"{raw_enemy.get('name', '?')} ({raw_enemy.get('civ', '?')})").grid(
+                    row=row, column=0, sticky="w", padx=(0, 6), pady=2
+                )
+                for col, (state, label) in enumerate(
+                    [("2tc", "2 TC"), ("fc", "Fast Castle"), ("army", "Army"), ("trade", "Trade")],
+                    start=1,
+                ):
+                    text = f"[{label}]" if self.scout_states.get(pid) == state else label
+                    ttk.Button(enemy_box, text=text, command=lambda p=pid, s=state: self.set_enemy_scout(p, s)).grid(
+                        row=row, column=col, sticky="ew", padx=2, pady=2
+                    )
+                    enemy_box.columnconfigure(col, weight=1)
+
+        steps = data.get("steps", {})
+        step_row = ttk.Frame(self.cockpit_frame)
+        step_row.pack(fill=tk.X, pady=(8, 0))
+        if isinstance(steps, dict):
+            for idx, (key, title_text) in enumerate(
+                [("scout_now", "1 Scout jetzt"), ("after_scout", "2 Reaktion"), ("push", "3 Push-Timing")]
+            ):
+                box = ttk.LabelFrame(step_row, text=title_text, padding=6)
+                box.grid(row=0, column=idx, sticky="nsew", padx=3)
+                step_row.columnconfigure(idx, weight=1, uniform="steps")
+                lines = steps.get(key, [])
+                if isinstance(lines, list):
+                    for line in lines[:4]:
+                        ttk.Label(box, text=f"- {line}", wraplength=320).pack(anchor=tk.W)
 
     def load_history(self) -> None:
         try:
@@ -342,12 +447,15 @@ class CommandCenterApp:
                 if not games:
                     self.send_message("clear", "Kein passendes Spiel gefunden.")
                     return
-                plan_text = analyzer.build_pregame_plan(player_name, profile_id, games[0])
+                game = games[0]
+                plan_text = analyzer.build_pregame_plan(player_name, profile_id, game)
+                cockpit = analyzer.build_live_cockpit_data(player_name, profile_id, game, include_online_stats=True)
                 out_dir = REPORTS_DIR
                 out_dir.mkdir(parents=True, exist_ok=True)
                 path = out_dir / f"{self.report_base(player_name, profile_id)}_spielplan.md"
                 path.write_text(plan_text, encoding="utf-8")
                 self.send_message("clear", plan_text)
+                self.send_message("cockpit", {"context": (player_name, profile_id, game), "data": cockpit})
                 self.send_message("history", self.history_payload("Spielplan", player_name, profile_id, path))
                 self.send_message("status", f"Spielplan gespeichert: {path}")
             except Exception as exc:
@@ -448,11 +556,13 @@ class CommandCenterApp:
                 if ongoing and ongoing.game_id != self.last_plan_game_id:
                     self.last_plan_game_id = ongoing.game_id
                     text = analyzer.build_pregame_plan(player_name, profile_id, ongoing)
+                    cockpit = analyzer.build_live_cockpit_data(player_name, profile_id, ongoing, include_online_stats=True)
                     out_dir = REPORTS_DIR
                     out_dir.mkdir(parents=True, exist_ok=True)
                     plan_path = out_dir / f"{self.report_base(player_name, profile_id, ongoing.game_id)}_spielplan.md"
                     plan_path.write_text(text, encoding="utf-8")
                     self.send_message("clear", text)
+                    self.send_message("cockpit", {"context": (player_name, profile_id, ongoing), "data": cockpit})
                     self.send_message("history", self.history_payload("Live-Spielplan", player_name, profile_id, plan_path))
                     self.send_message("status", f"Laufendes Spiel erkannt: {ongoing.game_id}. Strategie erzeugt.")
                 elif self.last_seen_ongoing_id and not ongoing:

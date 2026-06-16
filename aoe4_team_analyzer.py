@@ -94,6 +94,177 @@ KNOWN_PLAYER_ROLES = {
     "dubee": "Eco/Support",
 }
 
+SCOUT_STATES = {
+    "2tc": "2 TC/Eco",
+    "fc": "Fast Castle",
+    "army": "Fruehe Army",
+    "trade": "Trade/Boom",
+}
+
+CIV_PLAYBOOK = {
+    "English": {
+        "focus": "Feudal-Armee",
+        "build": "Ratshalle/Longbows, 1 TC Druck; 2 TC nur wenn Gegner passiv.",
+        "scout": "Gold, Range, Barracks, zweites TC.",
+        "react": "Gegen Ritter Speere mischen; gegen Boom Longbow-Druck auf Gold.",
+        "timing": "Minute 7-10 erster Longbow/Speer-Druck.",
+    },
+    "House Of Lancaster": {
+        "focus": "Feudal-Armee",
+        "build": "Fruehe Praesenz, 1 TC Druck; 2 TC nur bei sicherer Karte.",
+        "scout": "Gold, Produktion, Wall-Spots.",
+        "react": "Mitte halten und Druckspieler absichern.",
+        "timing": "Minute 8-12 Longbow/Infanterie zum Teamziel.",
+    },
+    "French": {
+        "focus": "Fruehe Army",
+        "build": "1 TC Royal Knights; kein greediger 2 TC Start.",
+        "scout": "Gegner-Gold, Speere, zweite Produktion.",
+        "react": "Gold/Beeren raiden, Speere umgehen, Boomer stoeren.",
+        "timing": "Minute 5-9 Ritterdruck, danach Teamziel festnageln.",
+    },
+    "Mongols": {
+        "focus": "Fruehe Army",
+        "build": "Tower/Feudal-Druck oder schnelle Kav; kein klassisches 2 TC.",
+        "scout": "Ovoo-Position, Gegner-Gold, offene Holzlinien.",
+        "react": "Tempo nutzen, aber nicht alleine all-in.",
+        "timing": "Minute 5-10 Druck/Vision, Minute 10+ Teamfight vorbereiten.",
+    },
+    "Ottomans": {
+        "focus": "Produktion/Support",
+        "build": "Militaerschulen frueh setzen, 1 TC stabile Army; 2 TC nur wenn Team dich deckt.",
+        "scout": "Raidgefahr, gegnerische Stables, Boomer-Gold.",
+        "react": "Gratis-Produktion konstant sammeln, Mehter/Army zum Teamfight.",
+        "timing": "Minute 8-12 Masse sammeln, nicht einzeln traden.",
+    },
+    "Abbasid Dynasty": {
+        "focus": "2 TC/Eco",
+        "build": "Eco Wing -> 2 TC, wenn Scout keine harte Feudal-Army sieht.",
+        "scout": "Fruehe Stables/Ranges, Tower-Rush, freie Expansion.",
+        "react": "Bei Druck 1 TC bleiben, Army zuerst; bei Ruhe 2 TC skalieren.",
+        "timing": "Minute 7-9 2 TC oder Defense-Call, Minute 14+ Army nachziehen.",
+    },
+    "Malians": {
+        "focus": "Eco/Trade",
+        "build": "Pit Mines sichern, defensiv skalieren; Trade nur mit Teamdeckung.",
+        "scout": "Raidgefahr auf Gold/Pit Mines, gegnerische Kav.",
+        "react": "Walls/Outposts frueh, danach in Army oder Trade umwandeln.",
+        "timing": "Minute 8 Defense-Check, Minute 14+ Power-Spike nutzen.",
+    },
+    "Japanese": {
+        "focus": "Fast Castle",
+        "build": "Fast Castle/Relikte, 1 TC; Feudal-Army nur gegen Druck.",
+        "scout": "Kommt Feudal-All-in? Stables/Ranges und gegnerisches Gold.",
+        "react": "Bei wenig Druck Castle; bei Druck Speere/Defense und Teamhilfe.",
+        "timing": "Minute 8-10 Castle vorbereiten, Minute 12-15 Relikte/Push.",
+    },
+    "Sengoku Daimyo": {
+        "focus": "Fast Castle",
+        "build": "Castle/Imperial-Timing vorbereiten; nicht in Feudal verheizen.",
+        "scout": "Feudal-Druck, offene Goldwege, Relikte.",
+        "react": "Nur verteidigen bis Tech-Timing, dann gesammelt kaempfen.",
+        "timing": "Minute 12-16 Castle-Power mit Team sichern.",
+    },
+    "Holy Roman Empire": {
+        "focus": "Fast Castle",
+        "build": "Aachen-Eco -> Fast Castle/Relikte; 2 TC selten vor Sicherheit.",
+        "scout": "Wird dein Gold getowert/geraided? Relikte und Gegnerdruck.",
+        "react": "Bei Druck defensiv sammeln; bei Ruhe Castle und Relikte.",
+        "timing": "Minute 8-10 Castle, Minute 11-14 Relikte sichern.",
+    },
+    "Delhi Sultanate": {
+        "focus": "Map-Control",
+        "build": "Sacred Sites + Feudal-Army, 1 TC Tempo.",
+        "scout": "Sacred-Site Wege, gegnerische Army, Wall-Spots.",
+        "react": "Sites nehmen, Gegner zum Reagieren zwingen, Teamfight vorbereiten.",
+        "timing": "Minute 6-9 Sites/Army, Minute 10-14 Teamdruck.",
+    },
+    "Ayyubids": {
+        "focus": "Tempo/Tech",
+        "build": "Flex: schnelle Map-Praesenz oder Castle-Timing nach Scout.",
+        "scout": "Kannst du Gold/Relikte bestrafen oder musst du verteidigen?",
+        "react": "Schwachen Gegner aktiv stoeren, sonst Castle-Power vorbereiten.",
+        "timing": "Minute 8-12 Druck oder Tech-Call klar ansagen.",
+    },
+    "Knights Templar": {
+        "focus": "Fruehe Army",
+        "build": "Fruehe Power in Druck uebersetzen, 1 TC Tempo.",
+        "scout": "Gold, Speere, isolierte Eco.",
+        "react": "Boom verzoegern, aber Team nicht ohne dich fighten lassen.",
+        "timing": "Minute 7-12 Druck auf erstes Ziel.",
+    },
+    "Rus": {
+        "focus": "Map-Control/Eco",
+        "build": "Bounty + Holz/Eco, dann Feudal-Kav oder Castle nach Scout.",
+        "scout": "Hunt/Bounty, Gegner-Gold, Raidgefahr.",
+        "react": "Map-Kontrolle nutzen, Boomer stoeren oder Castle sichern.",
+        "timing": "Minute 6-10 Map-Control, Minute 12+ gemeinsamer Druck.",
+    },
+    "Golden Horde": {
+        "focus": "Fruehe Army",
+        "build": "Tempo und mobile Army; Druck statt greediger Eco.",
+        "scout": "Offene Eco, gegnerische Speere, Goldwege.",
+        "react": "Raids setzen und Teamfight nicht verpassen.",
+        "timing": "Minute 6-11 Druck, danach Teamziel halten.",
+    },
+    "Tughlaq Dynasty": {
+        "focus": "Flex/Support",
+        "build": "Scout entscheidet: Defense gegen Druck, sonst Tech/Eco absichern.",
+        "scout": "Feudal-Army, gegnerisches Gold, freie Expansion.",
+        "react": "Teamluecke fuellen: Schutz fuer Boomer oder zweiter Druckspieler.",
+        "timing": "Minute 8 Rollenentscheidung, Minute 12 Teamfight vorbereiten.",
+    },
+    "Macedonian Dynasty": {
+        "focus": "Tech/Timing",
+        "build": "Saubere Eco in Timing-Army; 2 TC nur bei sicherem Scout.",
+        "scout": "Raidgefahr, gegnerisches Tech, offene Ressourcen.",
+        "react": "Nicht isoliert boomen; Power-Spike mit Team callen.",
+        "timing": "Minute 10-15 erster koordinierter Spike.",
+    },
+    "Jin Dynasty": {
+        "focus": "2 TC/Eco",
+        "build": "Eco skalieren, aber gegen Feudal-Druck 1 TC Defense.",
+        "scout": "Stables/Ranges, zweites TC, Golddruck.",
+        "react": "Greed nur mit Walls/Vision; sonst Army zuerst.",
+        "timing": "Minute 8 Eco-Entscheid, Minute 14 Army nachziehen.",
+    },
+    "Chinese": {
+        "focus": "2 TC/Eco",
+        "build": "Song/Eco oder 2 TC, wenn kein harter Druck kommt.",
+        "scout": "Fruehe Aggression, Tower, gegnerisches zweites TC.",
+        "react": "Bei Ruhe boomen; bei Druck Defense/Units vor Tech.",
+        "timing": "Minute 8 Eco-Call, Minute 15+ skalierte Army.",
+    },
+    "Zhu Xis Legacy": {
+        "focus": "2 TC/Eco",
+        "build": "Eco/Tech skalieren; 2 TC nur mit sicherer Front.",
+        "scout": "Golddruck, fruehe Army, Expansionsfenster.",
+        "react": "Nicht frei raiden lassen, danach starkes Timing callen.",
+        "timing": "Minute 10-15 Tech/Eco in Army uebersetzen.",
+    },
+    "Byzantines": {
+        "focus": "Flex/Support",
+        "build": "Mercenary/Army nach Scout; Eco nur wenn Druck gering ist.",
+        "scout": "Welche Gegnerseite ist offen? Gold, Stables, Range.",
+        "react": "Team braucht entweder Defense oder Zusatzdruck, nicht beides halb.",
+        "timing": "Minute 8-12 Rolle festlegen und mit Team sammeln.",
+    },
+    "Order Of The Dragon": {
+        "focus": "Fruehe Army",
+        "build": "Wenige starke Units, 1 TC Druck/Map-Control.",
+        "scout": "Kann Gegner Masse bauen? Gold und Produktion pruefen.",
+        "react": "Nicht in schlechte Trades laufen; hochwertige Units erhalten.",
+        "timing": "Minute 8-12 kleine starke Army zum Teamziel.",
+    },
+    "Jeanne Darc": {
+        "focus": "Fruehe Army",
+        "build": "Jeanne leveln, 1 TC Tempo, Druck auf Gold/Beeren.",
+        "scout": "Speere, Wall-Spots, isolierte Villager.",
+        "react": "XP und Map-Control holen, nicht in TC-Feuer verlieren.",
+        "timing": "Minute 5-10 Druck, Jeanne-Level sichern.",
+    },
+}
+
 
 @dataclass
 class PlayerInGame:
@@ -966,6 +1137,24 @@ def player_label(player: PlayerInGame) -> str:
     return f"{player.name} ({player.civilization})"
 
 
+def civ_key(civilization: str) -> str:
+    return civilization.lower().replace(" ", "_").replace("'", "")
+
+
+def civ_playbook(civilization: str) -> dict[str, str]:
+    role, hint = guide_for_civ(civilization)
+    return CIV_PLAYBOOK.get(
+        civilization,
+        {
+            "focus": role,
+            "build": "Scout entscheidet: 1 TC Army gegen Druck, Eco/Tech nur wenn sicher.",
+            "scout": "Gold, zweites TC, fruehe Produktion, offene Flanken.",
+            "react": hint,
+            "timing": "Minute 8 Rollenentscheidung, Minute 12-15 gemeinsam sammeln.",
+        },
+    )
+
+
 def threat_score(player: PlayerInGame) -> int:
     score = 0
     if player.civilization in BOOM_CIVS:
@@ -1014,25 +1203,152 @@ def short_player_plan(player: PlayerInGame, game: NormalizedGame, is_requester: 
     shown_role = custom_role or role
     prefix = f"{player.name}{' (du)' if is_requester else ''}: {player.civilization} -> {shown_role}"
 
-    if player.civilization == "French":
-        action = "Ritter frueh raus, Gold/Beeren vom Zielspieler stoeren."
-    elif player.civilization in {"English", "House Of Lancaster"}:
-        action = "Longbows + Vision, Mitte/Relikte sichern, Druckspieler absichern."
-    elif player.civilization in {"Japanese", "Sengoku Daimyo"}:
-        action = "Fast Castle/Relikte vorbereiten, nicht in Feudal verheizen."
-    elif player.civilization in {"Abbasid Dynasty", "Malians"}:
-        action = "Eco aufbauen, aber Flanken/Walls/Trade-Route frueh planen."
-    elif player.civilization in {"Ayyubids", "Knights Templar", "Mongols", "Delhi Sultanate"}:
-        action = "Tempo nutzen, erstes Ziel aktiv unter Druck setzen."
-    else:
-        action = "saubere Eco + rechtzeitig Armee fuer ersten Teamfight."
+    book = civ_playbook(player.civilization)
+    action = f"{book['focus']}: {book['build']} {book['timing']}"
 
     if game.team_size >= 4 and custom_role in {"Eco/Support", "Scaling-Carry"}:
         action += " Team muss dich bis Castle/Imperial schuetzen."
     if game.team_size >= 4 and custom_role == "Aggression/Raids":
-        action += " Nicht alleine all-in, nur Boom verzögern."
+        action += " Nicht alleine all-in, nur Boom verzoegern."
 
     return f"- {prefix}: {action}"
+
+
+def team_focus_cards(game: NormalizedGame) -> list[dict[str, str]]:
+    cards: list[dict[str, str]] = []
+    for player in [game.player, *game.allies]:
+        role, _ = guide_for_civ(player.civilization)
+        book = civ_playbook(player.civilization)
+        cards.append(
+            {
+                "name": f"{player.name} (du)" if player.profile_id == game.player.profile_id else player.name,
+                "civ": player.civilization,
+                "role": known_role(player) or role,
+                "focus": book["focus"],
+                "build": book["build"],
+                "timing": book["timing"],
+            }
+        )
+    return cards
+
+
+def scout_reaction(enemy: PlayerInGame, state: str) -> str:
+    if state == "2tc":
+        return f"{enemy.name} boomt: Druck auf Gold/2. TC, nicht bis Minute 18 frei lassen."
+    if state == "fc":
+        return f"{enemy.name} techt: Gold/Relikte stoeren oder vor Castle gemeinsam pushen."
+    if state == "army":
+        return f"{enemy.name} baut Army: defensiv sammeln, Counter bauen, nicht einzeln fighten."
+    if state == "trade":
+        return f"{enemy.name} will Trade/Boom: Route scouten, Markt/Trader frueh bestrafen."
+    book = civ_playbook(enemy.civilization)
+    return f"Erwartung: {book['focus']}. Scout prueft: {book['scout']}"
+
+
+def enemy_scout_cards(game: NormalizedGame, scout_states: dict[int, str] | None = None) -> list[dict[str, str]]:
+    scout_states = scout_states or {}
+    cards: list[dict[str, str]] = []
+    for enemy in game.enemies:
+        state = scout_states.get(enemy.profile_id, "")
+        book = civ_playbook(enemy.civilization)
+        cards.append(
+            {
+                "profile_id": str(enemy.profile_id),
+                "name": enemy.name,
+                "civ": enemy.civilization,
+                "expected": book["focus"],
+                "scout": book["scout"],
+                "state": SCOUT_STATES.get(state, ""),
+                "reaction": scout_reaction(enemy, state),
+            }
+        )
+    return cards
+
+
+def tactical_steps(game: NormalizedGame, scout_states: dict[int, str] | None = None) -> dict[str, list[str]]:
+    scout_states = scout_states or {}
+    target = choose_primary_target(game)
+    reactions = [card["reaction"] for card in enemy_scout_cards(game, scout_states) if card["state"]]
+    if not reactions:
+        reactions = concise_enemy_plan(game) or ["Noch kein Scout-Input: Gold, 2. TC, Stables/Ranges und Trade-Route pruefen."]
+    return {
+        "scout_now": [
+            "0-2: Gegner-Gold und erste Produktion ansehen.",
+            "2-4: Check: 2. TC? Stables/Ranges? Fast-Castle-Gold? Markt/Trade?",
+            "4-6: Teamcall: wer drueckt, wer deckt, wer darf boomen.",
+        ],
+        "after_scout": reactions[:4],
+        "push": [
+            f"9-12: {pressure_player_names(game)} geht auf {player_label(target) if target else 'das gescoutete Ziel'}, Team sichert nach.",
+            "12-16: Kein Solo-Fight; erst sammeln, dann Gold/TC/Trade angreifen.",
+            "16-20: Wenn Druck nicht endet: Relikte/Mitte/zweite Front sichern.",
+        ],
+    }
+
+
+def fetch_current_matchup_stats(
+    own_civs: list[str],
+    enemy_civs: list[str],
+    rating: str | None = None,
+    rank_level: str | None = None,
+) -> dict[str, Any]:
+    params: dict[str, Any] = {}
+    if rating:
+        params["rating"] = rating
+    if rank_level:
+        params["rank_level"] = rank_level
+    data = api_get("/stats/rm_solo/matchups", params)
+    rows = data.get("data", [])
+    lookup = {
+        (row.get("civilization"), row.get("other_civilization")): row
+        for row in rows
+        if isinstance(row, dict)
+    }
+    pair_rows = []
+    for own in own_civs:
+        for enemy in enemy_civs:
+            row = lookup.get((civ_key(own), civ_key(enemy)))
+            if row:
+                pair_rows.append(row)
+    games = sum(int(row.get("games_count") or 0) for row in pair_rows)
+    if not pair_rows or games <= 0:
+        return {"available": False, "patch": str(data.get("patch", "?")), "summary": "Keine Matchup-Daten gefunden."}
+    weighted = sum(float(row.get("win_rate") or 0) * int(row.get("games_count") or 0) for row in pair_rows) / games
+    return {
+        "available": True,
+        "patch": str(data.get("patch", "?")),
+        "win_rate": weighted,
+        "games": games,
+        "summary": f"AoE4World Patch {data.get('patch', '?')}: Team-Civ-Matchup ca. {weighted:.1f}% aus {games} 1v1-Paarungen.",
+    }
+
+
+def build_live_cockpit_data(
+    player_name: str,
+    profile_id: int,
+    game: NormalizedGame,
+    scout_states: dict[int, str] | None = None,
+    include_online_stats: bool = False,
+) -> dict[str, Any]:
+    own_civs = [player.civilization for player in [game.player, *game.allies]]
+    enemy_civs = [enemy.civilization for enemy in game.enemies]
+    stats = {"available": False, "summary": "Online-Matchup noch nicht geladen."}
+    if include_online_stats:
+        try:
+            stats = fetch_current_matchup_stats(own_civs, enemy_civs)
+        except Exception as exc:
+            stats = {"available": False, "summary": f"Online-Matchup nicht verfuegbar: {exc}"}
+    return {
+        "player": player_name,
+        "profile_id": profile_id,
+        "game_id": game.game_id,
+        "map": game.map_name,
+        "kind": game.kind,
+        "team": team_focus_cards(game),
+        "enemies": enemy_scout_cards(game, scout_states),
+        "steps": tactical_steps(game, scout_states),
+        "matchup_stats": stats,
+    }
 
 
 def timing_role_summary(game: NormalizedGame) -> str:
