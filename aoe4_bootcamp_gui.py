@@ -40,7 +40,7 @@ class CommandCenterApp:
         self.history_entries: list[dict[str, str]] = []
         self.current_cockpit_context: tuple[str, int, analyzer.NormalizedGame] | None = None
         self.current_cockpit_stats: dict[str, object] | None = None
-        self.scout_states: dict[int, str] = {}
+        self.scout_states: dict[int, dict[str, str]] = {}
         self.strategy_window: tk.Toplevel | None = None
         self.strategy_text: tk.Text | None = None
         self.touch_window: tk.Toplevel | None = None
@@ -261,10 +261,28 @@ class CommandCenterApp:
         self.update_cockpit_from_scout()
 
     def toggle_scout_state(self, profile_id: int, state: str) -> None:
-        if self.scout_states.get(profile_id) == state:
-            self.scout_states.pop(profile_id, None)
+        bucket = "age" if state in analyzer.AGE_SCOUT_STATES else "plan"
+        current = self.scout_states.get(profile_id, {})
+        if not isinstance(current, dict):
+            current = {"age": current} if current in analyzer.AGE_SCOUT_STATES else {"plan": str(current)}
+        if current.get(bucket) == state:
+            current.pop(bucket, None)
         else:
-            self.scout_states[profile_id] = state
+            current[bucket] = state
+        if current:
+            self.scout_states[profile_id] = current
+        elif profile_id in self.scout_states:
+            self.scout_states.pop(profile_id, None)
+
+    def scout_bucket(self, profile_id: int, bucket: str) -> str:
+        value = self.scout_states.get(profile_id, {})
+        if isinstance(value, dict):
+            return value.get(bucket, "")
+        if bucket == "age" and value in analyzer.AGE_SCOUT_STATES:
+            return str(value)
+        if bucket == "plan" and value:
+            return str(value)
+        return ""
 
     def apply_scout_payload(self, payload: object) -> None:
         if not isinstance(payload, dict):
@@ -340,9 +358,17 @@ class CommandCenterApp:
             return "127.0.0.1"
 
     def tablet_state(self) -> dict[str, object]:
+        normalized_states: dict[str, dict[str, str]] = {}
+        for key, value in self.scout_states.items():
+            if isinstance(value, dict):
+                normalized_states[str(key)] = value
+            elif value in analyzer.AGE_SCOUT_STATES:
+                normalized_states[str(key)] = {"age": value}
+            else:
+                normalized_states[str(key)] = {"plan": str(value)}
         return {
             "cockpit": self.current_cockpit_data or {},
-            "scout_states": {str(key): value for key, value in self.scout_states.items()},
+            "scout_states": normalized_states,
         }
 
     def tablet_html(self) -> str:
@@ -372,7 +398,8 @@ ul{padding-left:18px;margin:6px 0}li{margin:5px 0}
 <header><h1 id="title">AoE4 Touch-Cockpit</h1><div class="meta" id="meta">Warte auf Spielplan...</div></header>
 <main><section class="grid" id="enemies"></section><section class="panels" id="panels"></section></main>
 <script>
-const buttons=[['2tc','2 TC'],['fc','Fast Castle'],['trade','Trade'],['army','Army'],['feudal','Feudal'],['castle','Castle'],['imperial','Imperial'],['unclear','Unklar']];
+const planButtons=[['2tc','2 TC'],['fc','Fast Castle'],['trade','Trade'],['army','Army'],['unclear','Unklar']];
+const ageButtons=[['feudal','Feudal'],['castle','Castle'],['imperial','Imperial']];
 async function setScout(pid,state){await fetch('/set?pid='+encodeURIComponent(pid)+'&state='+encodeURIComponent(state)); await load();}
 function list(lines){return '<ul>'+((lines||[]).map(x=>'<li>'+escapeHtml(x)+'</li>').join(''))+'</ul>'}
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,m=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]))}
@@ -382,11 +409,12 @@ async function load(){
  let stats=data.matchup_stats||{}; document.getElementById('meta').textContent=stats.available&&stats.win_rate!=null?'Team-Matchup: '+Number(stats.win_rate).toFixed(1)+'% Winrate':'';
  const enemies=document.getElementById('enemies'); enemies.innerHTML='';
  (data.enemies||[]).forEach(e=>{
-   const pid=e.profile_id; const active=scouts[String(pid)]||'';
+   const pid=e.profile_id; const active=scouts[String(pid)]||{};
    const card=document.createElement('div'); card.className='card';
-   card.innerHTML='<div class="name">'+escapeHtml(e.name||'?')+'</div><div class="civ">'+escapeHtml(e.civ||'?')+'</div><div class="expected">'+escapeHtml(e.expected||'')+'</div><div class="reaction">'+escapeHtml(e.reaction||'')+'</div><div class="buttons"></div>';
-   const wrap=card.querySelector('.buttons');
-   buttons.forEach(([key,label])=>{const b=document.createElement('button'); b.textContent=label; if(active===key)b.className='active'; b.onclick=()=>setScout(pid,key); wrap.appendChild(b);});
+   card.innerHTML='<div class="name">'+escapeHtml(e.name||'?')+'</div><div class="civ">'+escapeHtml(e.civ||'?')+'</div><div class="expected">'+escapeHtml(e.expected||'')+'</div><div class="reaction">'+escapeHtml(e.reaction||'')+'</div><div class="buttons plan"></div><div class="buttons age"></div>';
+   const planWrap=card.querySelector('.plan'); const ageWrap=card.querySelector('.age');
+   planButtons.forEach(([key,label])=>{const b=document.createElement('button'); b.textContent=label; if(active.plan===key)b.className='active'; b.onclick=()=>setScout(pid,key); planWrap.appendChild(b);});
+   ageButtons.forEach(([key,label])=>{const b=document.createElement('button'); b.textContent=label; if(active.age===key)b.className='active'; b.onclick=()=>setScout(pid,key); ageWrap.appendChild(b);});
    enemies.appendChild(card);
  });
  const steps=data.steps||{}; document.getElementById('panels').innerHTML='<div class="panel"><b>Reaktionsplan</b>'+list(steps.after_scout)+'</div><div class="panel"><b>Push-Timing</b>'+list(steps.push)+'</div><div class="panel"><b>Scout-Check</b>'+list(steps.scout_now)+'</div>';
@@ -518,15 +546,17 @@ load(); setInterval(load,2000);
         enemy_grid = ttk.Frame(self.touch_frame)
         enemy_grid.pack(fill=tk.X)
         enemies = data.get("enemies", [])
-        button_defs = [
+        plan_button_defs = [
             ("2tc", "2 TC"),
             ("fc", "Fast Castle"),
             ("trade", "Trade"),
             ("army", "Army"),
+            ("unclear", "Unklar"),
+        ]
+        age_button_defs = [
             ("feudal", "Feudal"),
             ("castle", "Castle"),
             ("imperial", "Imperial"),
-            ("unclear", "Unklar"),
         ]
         if isinstance(enemies, list):
             for idx, raw_enemy in enumerate(enemies):
@@ -540,12 +570,20 @@ load(); setInterval(load,2000);
                 ttk.Label(card, text=str(raw_enemy.get("reaction", "")), wraplength=380).pack(anchor=tk.W, pady=(2, 6))
                 buttons = ttk.Frame(card)
                 buttons.pack(fill=tk.X)
-                for b_idx, (state, label) in enumerate(button_defs):
-                    text = f"[{label}]" if self.scout_states.get(pid) == state else label
+                for b_idx, (state, label) in enumerate(plan_button_defs):
+                    text = f"[{label}]" if self.scout_bucket(pid, "plan") == state else label
                     ttk.Button(buttons, text=text, command=lambda p=pid, s=state: self.set_enemy_scout(p, s)).grid(
-                        row=b_idx // 4, column=b_idx % 4, sticky="ew", padx=2, pady=2
+                        row=0, column=b_idx, sticky="ew", padx=2, pady=2
                     )
-                    buttons.columnconfigure(b_idx % 4, weight=1)
+                    buttons.columnconfigure(b_idx, weight=1)
+                ages = ttk.Frame(card)
+                ages.pack(fill=tk.X, pady=(4, 0))
+                for b_idx, (state, label) in enumerate(age_button_defs):
+                    text = f"[{label}]" if self.scout_bucket(pid, "age") == state else label
+                    ttk.Button(ages, text=text, command=lambda p=pid, s=state: self.set_enemy_scout(p, s)).grid(
+                        row=0, column=b_idx, sticky="ew", padx=2, pady=2
+                    )
+                    ages.columnconfigure(b_idx, weight=1)
 
         steps = data.get("steps", {})
         if isinstance(steps, dict):

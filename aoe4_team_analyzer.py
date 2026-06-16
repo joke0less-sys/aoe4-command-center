@@ -104,6 +104,8 @@ SCOUT_STATES = {
     "imperial": "Imperial",
     "unclear": "Unklar",
 }
+AGE_SCOUT_STATES = {"feudal", "castle", "imperial"}
+PLAN_SCOUT_STATES = {"2tc", "fc", "army", "trade", "unclear"}
 
 GLOSSARY = {
     "Tempo": (
@@ -1280,11 +1282,31 @@ def scout_reaction(enemy: PlayerInGame, state: str) -> str:
     return f"Erwartung: {book['focus']}. Scout prueft: {book['scout']}"
 
 
-def enemy_scout_cards(game: NormalizedGame, scout_states: dict[int, str] | None = None) -> list[dict[str, str]]:
+def scout_state_parts(value: object) -> tuple[str, str]:
+    if isinstance(value, dict):
+        return str(value.get("age", "")), str(value.get("plan", ""))
+    state = str(value or "")
+    if state in AGE_SCOUT_STATES:
+        return state, ""
+    return "", state
+
+
+def merged_scout_reaction(enemy: PlayerInGame, age: str, plan: str) -> str:
+    parts: list[str] = []
+    if age:
+        parts.append(scout_reaction(enemy, age))
+    if plan:
+        parts.append(scout_reaction(enemy, plan))
+    if parts:
+        return " ".join(parts)
+    return scout_reaction(enemy, "")
+
+
+def enemy_scout_cards(game: NormalizedGame, scout_states: dict[int, object] | None = None) -> list[dict[str, str]]:
     scout_states = scout_states or {}
     cards: list[dict[str, str]] = []
     for enemy in game.enemies:
-        state = scout_states.get(enemy.profile_id, "")
+        age, plan = scout_state_parts(scout_states.get(enemy.profile_id, ""))
         book = civ_playbook(enemy.civilization)
         cards.append(
             {
@@ -1293,21 +1315,26 @@ def enemy_scout_cards(game: NormalizedGame, scout_states: dict[int, str] | None 
                 "civ": enemy.civilization,
                 "expected": book["focus"],
                 "scout": book["scout"],
-                "state": SCOUT_STATES.get(state, ""),
-                "reaction": scout_reaction(enemy, state),
+                "age": age,
+                "age_label": SCOUT_STATES.get(age, ""),
+                "plan": plan,
+                "plan_label": SCOUT_STATES.get(plan, ""),
+                "state": " / ".join(label for label in [SCOUT_STATES.get(age, ""), SCOUT_STATES.get(plan, "")] if label),
+                "reaction": merged_scout_reaction(enemy, age, plan),
             }
         )
     return cards
 
 
-def combined_reaction_plan(game: NormalizedGame, scout_states: dict[int, str] | None = None) -> list[str]:
+def combined_reaction_plan(game: NormalizedGame, scout_states: dict[int, object] | None = None) -> list[str]:
     scout_states = scout_states or {}
     enemies_by_id = {enemy.profile_id: enemy for enemy in game.enemies}
+    parts = {pid: scout_state_parts(value) for pid, value in scout_states.items()}
 
-    army = [enemies_by_id[pid] for pid, state in scout_states.items() if state in {"army", "feudal"} and pid in enemies_by_id]
-    tech = [enemies_by_id[pid] for pid, state in scout_states.items() if state in {"fc", "castle", "imperial"} and pid in enemies_by_id]
-    eco = [enemies_by_id[pid] for pid, state in scout_states.items() if state in {"2tc", "trade"} and pid in enemies_by_id]
-    unclear = [enemies_by_id[pid] for pid, state in scout_states.items() if state == "unclear" and pid in enemies_by_id]
+    army = [enemies_by_id[pid] for pid, (age, plan) in parts.items() if (plan == "army" or age == "feudal") and pid in enemies_by_id]
+    tech = [enemies_by_id[pid] for pid, (age, plan) in parts.items() if (plan == "fc" or age in {"castle", "imperial"}) and pid in enemies_by_id]
+    eco = [enemies_by_id[pid] for pid, (_age, plan) in parts.items() if plan in {"2tc", "trade"} and pid in enemies_by_id]
+    unclear = [enemies_by_id[pid] for pid, (_age, plan) in parts.items() if plan == "unclear" and pid in enemies_by_id]
 
     if not any([army, tech, eco, unclear]):
         return concise_enemy_plan(game) or ["Noch kein Scout-Input: Gold, 2. TC, Stables/Ranges und Trade-Route pruefen."]
@@ -1331,11 +1358,11 @@ def combined_reaction_plan(game: NormalizedGame, scout_states: dict[int, str] | 
     return lines[:4]
 
 
-def tactical_steps(game: NormalizedGame, scout_states: dict[int, str] | None = None) -> dict[str, list[str]]:
+def tactical_steps(game: NormalizedGame, scout_states: dict[int, object] | None = None) -> dict[str, list[str]]:
     scout_states = scout_states or {}
     target = choose_primary_target(game)
     reactions = combined_reaction_plan(game, scout_states)
-    has_enemy_army = any(state in {"army", "feudal"} for state in scout_states.values())
+    has_enemy_army = any(plan == "army" or age == "feudal" for age, plan in (scout_state_parts(value) for value in scout_states.values()))
     first_push = (
         "9-12: Erst gegnerischen Druck halten, dann gemeinsam kontern."
         if has_enemy_army
@@ -1397,7 +1424,7 @@ def build_live_cockpit_data(
     player_name: str,
     profile_id: int,
     game: NormalizedGame,
-    scout_states: dict[int, str] | None = None,
+    scout_states: dict[int, object] | None = None,
     include_online_stats: bool = False,
 ) -> dict[str, Any]:
     own_civs = [player.civilization for player in [game.player, *game.allies]]
