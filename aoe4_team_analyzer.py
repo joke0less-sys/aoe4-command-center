@@ -1300,12 +1300,47 @@ def enemy_scout_cards(game: NormalizedGame, scout_states: dict[int, str] | None 
     return cards
 
 
+def combined_reaction_plan(game: NormalizedGame, scout_states: dict[int, str] | None = None) -> list[str]:
+    scout_states = scout_states or {}
+    enemies_by_id = {enemy.profile_id: enemy for enemy in game.enemies}
+
+    army = [enemies_by_id[pid] for pid, state in scout_states.items() if state in {"army", "feudal"} and pid in enemies_by_id]
+    tech = [enemies_by_id[pid] for pid, state in scout_states.items() if state in {"fc", "castle", "imperial"} and pid in enemies_by_id]
+    eco = [enemies_by_id[pid] for pid, state in scout_states.items() if state in {"2tc", "trade"} and pid in enemies_by_id]
+    unclear = [enemies_by_id[pid] for pid, state in scout_states.items() if state == "unclear" and pid in enemies_by_id]
+
+    if not any([army, tech, eco, unclear]):
+        return concise_enemy_plan(game) or ["Noch kein Scout-Input: Gold, 2. TC, Stables/Ranges und Trade-Route pruefen."]
+
+    lines: list[str] = []
+    if army:
+        names = ", ".join(player_label(enemy) for enemy in army[:2])
+        lines.append(f"Prioritaet 1: {names} baut Druck. Erst defensiv sammeln, Counter bauen, keinen Solo-Fight nehmen.")
+    if tech:
+        names = ", ".join(player_label(enemy) for enemy in tech[:2])
+        prefix = "Prioritaet 2" if army else "Prioritaet 1"
+        lines.append(f"{prefix}: {names} techt. Gold/Relikte stoeren oder vor dem Power-Spike gemeinsam pushen.")
+    if eco:
+        names = ", ".join(player_label(enemy) for enemy in eco[:2])
+        prefix = "Danach" if army or tech else "Prioritaet 1"
+        lines.append(f"{prefix}: {names} boomt/tradet. Druck auf Gold, 2. TC oder Trade-Route.")
+    if unclear:
+        names = ", ".join(player_label(enemy) for enemy in unclear[:2])
+        lines.append(f"Unklar: {names} nochmal scouten: Gold, Produktion, TC, Markt.")
+
+    return lines[:4]
+
+
 def tactical_steps(game: NormalizedGame, scout_states: dict[int, str] | None = None) -> dict[str, list[str]]:
     scout_states = scout_states or {}
     target = choose_primary_target(game)
-    reactions = [card["reaction"] for card in enemy_scout_cards(game, scout_states) if card["state"]]
-    if not reactions:
-        reactions = concise_enemy_plan(game) or ["Noch kein Scout-Input: Gold, 2. TC, Stables/Ranges und Trade-Route pruefen."]
+    reactions = combined_reaction_plan(game, scout_states)
+    has_enemy_army = any(state in {"army", "feudal"} for state in scout_states.values())
+    first_push = (
+        "9-12: Erst gegnerischen Druck halten, dann gemeinsam kontern."
+        if has_enemy_army
+        else f"9-12: {pressure_player_names(game)} geht auf {player_label(target) if target else 'das gescoutete Ziel'}, Team sichert nach."
+    )
     return {
         "scout_now": [
             "0-2: Gegner-Gold und erste Produktion ansehen.",
@@ -1314,7 +1349,7 @@ def tactical_steps(game: NormalizedGame, scout_states: dict[int, str] | None = N
         ],
         "after_scout": reactions[:4],
         "push": [
-            f"9-12: {pressure_player_names(game)} geht auf {player_label(target) if target else 'das gescoutete Ziel'}, Team sichert nach.",
+            first_push,
             "12-16: Kein Solo-Fight; erst sammeln, dann Gold/TC/Trade angreifen.",
             "16-20: Wenn Druck nicht endet: Relikte/Mitte/zweite Front sichern.",
         ],
