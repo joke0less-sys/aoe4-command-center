@@ -37,6 +37,11 @@ class CommandCenterApp:
         self.current_cockpit_context: tuple[str, int, analyzer.NormalizedGame] | None = None
         self.current_cockpit_stats: dict[str, object] | None = None
         self.scout_states: dict[int, str] = {}
+        self.strategy_window: tk.Toplevel | None = None
+        self.strategy_text: tk.Text | None = None
+        self.touch_window: tk.Toplevel | None = None
+        self.touch_frame: ttk.Frame | None = None
+        self.latest_output_text = ""
 
         self.url_var = tk.StringVar()
         self.match_type = tk.StringVar(value="ranked")
@@ -62,10 +67,21 @@ class CommandCenterApp:
 
         actions = ttk.Frame(outer)
         actions.pack(fill=tk.X, pady=10)
-        ttk.Button(actions, text="Vergangene Spiele auswerten", command=self.run_report).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(actions, text="Spielplan fuer aktuelles/letztes Spiel", command=self.run_plan_once).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(actions, text="Live-Scan starten", command=self.start_scan).pack(side=tk.LEFT, padx=(0, 8))
-        ttk.Button(actions, text="Scan stoppen", command=self.stop_scan).pack(side=tk.LEFT)
+        analysis_actions = ttk.LabelFrame(actions, text="Analyse", padding=6)
+        analysis_actions.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+        ttk.Button(analysis_actions, text="Vergangene Spiele auswerten", command=self.run_report).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(analysis_actions, text="Spielplan erzeugen", command=self.run_plan_once).pack(side=tk.LEFT)
+
+        live_actions = ttk.LabelFrame(actions, text="Live", padding=6)
+        live_actions.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
+        ttk.Button(live_actions, text="Live-Scan starten", command=self.start_scan).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(live_actions, text="Scan stoppen", command=self.stop_scan).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(live_actions, text="Screen-Erkennung", state=tk.DISABLED).pack(side=tk.LEFT)
+
+        window_actions = ttk.LabelFrame(actions, text="Fenster/Ansicht", padding=6)
+        window_actions.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Button(window_actions, text="Strategie-Fenster", command=self.open_strategy_window).pack(side=tk.LEFT, padx=(0, 6))
+        ttk.Button(window_actions, text="Touch-/Cockpit-Fenster", command=self.open_touch_window).pack(side=tk.LEFT)
 
         ttk.Label(outer, textvariable=self.scan_status).pack(anchor=tk.W, pady=(0, 8))
 
@@ -167,8 +183,12 @@ class CommandCenterApp:
     def append_output(self, text: str, clear: bool = False) -> None:
         if clear:
             self.output.delete("1.0", tk.END)
+            self.latest_output_text = text.rstrip() + "\n\n"
+        else:
+            self.latest_output_text += text.rstrip() + "\n\n"
         self.output.insert(tk.END, text.rstrip() + "\n\n")
         self.output.see(tk.END)
+        self.refresh_strategy_window()
 
     def send_message(self, kind: str, payload: object) -> None:
         self.message_queue.put((kind, payload))
@@ -224,6 +244,59 @@ class CommandCenterApp:
             self.scout_states[profile_id] = state
         self.update_cockpit_from_scout()
 
+    def matchup_summary(self, stats: object, detail: bool = False) -> str:
+        if not isinstance(stats, dict):
+            return ""
+        if stats.get("available") and stats.get("win_rate") is not None:
+            if detail:
+                return f"AoE4World Patch {stats.get('patch', '?')}, Durchschnitt aus {stats.get('games', '?')} Vergleichsdaten."
+            return f"Team-Matchup: {float(stats.get('win_rate')):.1f}% Winrate"
+        return str(stats.get("summary", ""))
+
+    def open_strategy_window(self) -> None:
+        if self.strategy_window and self.strategy_window.winfo_exists():
+            self.strategy_window.lift()
+            return
+        self.strategy_window = tk.Toplevel(self.root)
+        self.strategy_window.title("Strategie")
+        self.strategy_window.geometry("760x700")
+        self.strategy_text = tk.Text(self.strategy_window, wrap=tk.WORD, font=("Segoe UI", 12))
+        self.strategy_text.pack(fill=tk.BOTH, expand=True)
+        self.strategy_window.protocol("WM_DELETE_WINDOW", self.close_strategy_window)
+        self.refresh_strategy_window()
+
+    def close_strategy_window(self) -> None:
+        if self.strategy_window:
+            self.strategy_window.destroy()
+        self.strategy_window = None
+        self.strategy_text = None
+
+    def refresh_strategy_window(self) -> None:
+        if not self.strategy_text or not self.strategy_window or not self.strategy_window.winfo_exists():
+            return
+        self.strategy_text.configure(state=tk.NORMAL)
+        self.strategy_text.delete("1.0", tk.END)
+        self.strategy_text.insert(tk.END, self.latest_output_text)
+        self.strategy_text.configure(state=tk.DISABLED)
+
+    def open_touch_window(self) -> None:
+        if self.touch_window and self.touch_window.winfo_exists():
+            self.touch_window.lift()
+            return
+        self.touch_window = tk.Toplevel(self.root)
+        self.touch_window.title("Touch-Cockpit")
+        self.touch_window.geometry("900x720")
+        self.touch_frame = ttk.Frame(self.touch_window, padding=10)
+        self.touch_frame.pack(fill=tk.BOTH, expand=True)
+        self.touch_window.protocol("WM_DELETE_WINDOW", self.close_touch_window)
+        self.update_cockpit_from_scout()
+
+    def close_touch_window(self) -> None:
+        if self.touch_window:
+            self.touch_window.destroy()
+        self.touch_window = None
+        self.touch_frame = None
+
     def render_cockpit(self, data: dict[str, object]) -> None:
         self.clear_cockpit()
 
@@ -232,15 +305,14 @@ class CommandCenterApp:
         title = f"{data.get('kind', '?')} auf {data.get('map', '?')}"
         ttk.Label(header, text=title, font=("Segoe UI", 12, "bold")).pack(side=tk.LEFT)
         stats = data.get("matchup_stats")
-        if isinstance(stats, dict):
-            ttk.Label(header, text=str(stats.get("summary", ""))).pack(side=tk.RIGHT)
+        summary = self.matchup_summary(stats)
+        if summary:
+            ttk.Label(header, text=summary).pack(side=tk.RIGHT)
 
         top = ttk.Frame(self.cockpit_frame)
         top.pack(fill=tk.X)
         team_box = ttk.LabelFrame(top, text="Team-Aufgaben", padding=6)
-        team_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 6))
-        enemy_box = ttk.LabelFrame(top, text="Gegner scouten", padding=6)
-        enemy_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        team_box.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
 
         team = data.get("team", [])
         if isinstance(team, list):
@@ -254,25 +326,6 @@ class CommandCenterApp:
                 ttk.Label(card, text=str(raw_card.get("civ", ""))).pack(anchor=tk.W)
                 ttk.Label(card, text=str(raw_card.get("build", "")), wraplength=210).pack(anchor=tk.W, pady=(3, 0))
                 ttk.Label(card, text=str(raw_card.get("timing", "")), wraplength=210).pack(anchor=tk.W, pady=(3, 0))
-
-        enemies = data.get("enemies", [])
-        if isinstance(enemies, list):
-            for row, raw_enemy in enumerate(enemies):
-                if not isinstance(raw_enemy, dict):
-                    continue
-                pid = int(str(raw_enemy.get("profile_id", "0")) or 0)
-                ttk.Label(enemy_box, text=f"{raw_enemy.get('name', '?')} ({raw_enemy.get('civ', '?')})").grid(
-                    row=row, column=0, sticky="w", padx=(0, 6), pady=2
-                )
-                for col, (state, label) in enumerate(
-                    [("2tc", "2 TC"), ("fc", "Fast Castle"), ("army", "Army"), ("trade", "Trade")],
-                    start=1,
-                ):
-                    text = f"[{label}]" if self.scout_states.get(pid) == state else label
-                    ttk.Button(enemy_box, text=text, command=lambda p=pid, s=state: self.set_enemy_scout(p, s)).grid(
-                        row=row, column=col, sticky="ew", padx=2, pady=2
-                    )
-                    enemy_box.columnconfigure(col, weight=1)
 
         steps = data.get("steps", {})
         step_row = ttk.Frame(self.cockpit_frame)
@@ -288,6 +341,72 @@ class CommandCenterApp:
                 if isinstance(lines, list):
                     for line in lines[:4]:
                         ttk.Label(box, text=f"- {line}", wraplength=320).pack(anchor=tk.W)
+
+        self.render_touch_cockpit(data)
+
+    def render_touch_cockpit(self, data: dict[str, object]) -> None:
+        if not self.touch_frame or not self.touch_window or not self.touch_window.winfo_exists():
+            return
+        for child in self.touch_frame.winfo_children():
+            child.destroy()
+
+        header = ttk.Frame(self.touch_frame)
+        header.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(
+            header,
+            text=f"{data.get('kind', '?')} | {data.get('map', '?')} | Game {data.get('game_id', '?')}",
+            font=("Segoe UI", 14, "bold"),
+        ).pack(side=tk.LEFT)
+        detail = self.matchup_summary(data.get("matchup_stats"), detail=True)
+        if detail:
+            ttk.Label(header, text=detail).pack(side=tk.RIGHT)
+
+        enemy_grid = ttk.Frame(self.touch_frame)
+        enemy_grid.pack(fill=tk.X)
+        enemies = data.get("enemies", [])
+        button_defs = [
+            ("2tc", "2 TC"),
+            ("fc", "Fast Castle"),
+            ("trade", "Trade"),
+            ("army", "Army"),
+            ("feudal", "Feudal"),
+            ("castle", "Castle"),
+            ("imperial", "Imperial"),
+            ("unclear", "Unklar"),
+        ]
+        if isinstance(enemies, list):
+            for idx, raw_enemy in enumerate(enemies):
+                if not isinstance(raw_enemy, dict):
+                    continue
+                pid = int(str(raw_enemy.get("profile_id", "0")) or 0)
+                card = ttk.LabelFrame(enemy_grid, text=f"{raw_enemy.get('name', '?')} - {raw_enemy.get('civ', '?')}", padding=8)
+                card.grid(row=idx // 2, column=idx % 2, sticky="nsew", padx=4, pady=4)
+                enemy_grid.columnconfigure(idx % 2, weight=1, uniform="enemy")
+                ttk.Label(card, text=str(raw_enemy.get("expected", "")), font=("Segoe UI", 10, "bold")).pack(anchor=tk.W)
+                ttk.Label(card, text=str(raw_enemy.get("reaction", "")), wraplength=380).pack(anchor=tk.W, pady=(2, 6))
+                buttons = ttk.Frame(card)
+                buttons.pack(fill=tk.X)
+                for b_idx, (state, label) in enumerate(button_defs):
+                    text = f"[{label}]" if self.scout_states.get(pid) == state else label
+                    ttk.Button(buttons, text=text, command=lambda p=pid, s=state: self.set_enemy_scout(p, s)).grid(
+                        row=b_idx // 4, column=b_idx % 4, sticky="ew", padx=2, pady=2
+                    )
+                    buttons.columnconfigure(b_idx % 4, weight=1)
+
+        steps = data.get("steps", {})
+        if isinstance(steps, dict):
+            lower = ttk.Frame(self.touch_frame)
+            lower.pack(fill=tk.BOTH, expand=True, pady=(8, 0))
+            for idx, (key, title_text) in enumerate(
+                [("after_scout", "Reaktionsplan"), ("push", "Push-Timing"), ("scout_now", "Scout-Check")]
+            ):
+                box = ttk.LabelFrame(lower, text=title_text, padding=8)
+                box.grid(row=0, column=idx, sticky="nsew", padx=4)
+                lower.columnconfigure(idx, weight=1, uniform="lower")
+                lines = steps.get(key, [])
+                if isinstance(lines, list):
+                    for line in lines[:4]:
+                        ttk.Label(box, text=f"- {line}", wraplength=260).pack(anchor=tk.W)
 
     def load_history(self) -> None:
         try:
@@ -581,7 +700,11 @@ class CommandCenterApp:
                     self.send_message("clear", text)
                     self.send_message("cockpit", {"context": (player_name, profile_id, ongoing), "data": cockpit})
                     self.send_message("history", self.history_payload("Live-Spielplan", player_name, profile_id, plan_path))
-                    self.send_message("status", f"Laufendes Spiel erkannt: {ongoing.game_id}. Strategie erzeugt.")
+                    size = f"{ongoing.team_size}v{ongoing.team_size}"
+                    self.send_message(
+                        "status",
+                        f"AoE4World: {size} erkannt. Screen-Erkennung nicht verfuegbar. Strategie erzeugt.",
+                    )
                 elif self.last_seen_ongoing_id and not ongoing:
                     self.queue_pending_review(self.last_seen_ongoing_id)
                     self.last_seen_ongoing_id = None

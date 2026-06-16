@@ -99,6 +99,10 @@ SCOUT_STATES = {
     "fc": "Fast Castle",
     "army": "Fruehe Army",
     "trade": "Trade/Boom",
+    "feudal": "Feudal",
+    "castle": "Castle",
+    "imperial": "Imperial",
+    "unclear": "Unklar",
 }
 
 GLOSSARY = {
@@ -1264,6 +1268,14 @@ def scout_reaction(enemy: PlayerInGame, state: str) -> str:
         return f"{enemy.name} baut Army: defensiv sammeln, Counter bauen, nicht einzeln fighten."
     if state == "trade":
         return f"{enemy.name} will Trade/Boom: Route scouten, Markt/Trader frueh bestrafen."
+    if state == "feudal":
+        return f"{enemy.name} bleibt Feudal: Army erwarten, erst halten und dann gemeinsam kontern."
+    if state == "castle":
+        return f"{enemy.name} ist/geht Castle: Relikte und Gold stoeren, vor dem Power-Spike sammeln."
+    if state == "imperial":
+        return f"{enemy.name} geht Imperial: sofort Druck auf Eco/Trade, kein langes Warten."
+    if state == "unclear":
+        return f"{enemy.name} unklar: Scout nochmal Gold, Produktion, TC und Markt."
     book = civ_playbook(enemy.civilization)
     return f"Erwartung: {book['focus']}. Scout prueft: {book['scout']}"
 
