@@ -75,8 +75,7 @@ class CommandCenterApp:
         live_actions = ttk.LabelFrame(actions, text="Live", padding=6)
         live_actions.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 8))
         ttk.Button(live_actions, text="Live-Scan starten", command=self.start_scan).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(live_actions, text="Scan stoppen", command=self.stop_scan).pack(side=tk.LEFT, padx=(0, 6))
-        ttk.Button(live_actions, text="Screen-Erkennung", state=tk.DISABLED).pack(side=tk.LEFT)
+        ttk.Button(live_actions, text="Scan stoppen", command=self.stop_scan).pack(side=tk.LEFT)
 
         window_actions = ttk.LabelFrame(actions, text="Fenster/Ansicht", padding=6)
         window_actions.pack(side=tk.LEFT, fill=tk.X, expand=True)
@@ -703,7 +702,7 @@ class CommandCenterApp:
                     size = f"{ongoing.team_size}v{ongoing.team_size}"
                     self.send_message(
                         "status",
-                        f"AoE4World: {size} erkannt. Screen-Erkennung nicht verfuegbar. Strategie erzeugt.",
+                        f"AoE4World: {size} erkannt. Strategie erzeugt.",
                     )
                 elif self.last_seen_ongoing_id and not ongoing:
                     self.queue_pending_review(self.last_seen_ongoing_id)
