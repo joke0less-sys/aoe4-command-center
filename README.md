@@ -4,6 +4,16 @@
 
 Dieses kleine Tool wertet Age of Empires IV Spiele aus und erzeugt Spielplaene fuer laufende oder kommende Matches. Es nutzt die oeffentliche AoE4World-API und unterstuetzt 1v1, 2v2, 3v3 und 4v4.
 
+## Android-App
+
+Die neue Android-App liegt im Ordner [`android-app`](android-app). Sie bietet einen Matchup- und Strategieplan, Gegneranalysen, eigene Statistiken sowie ein Civ-Lexikon mit Daten von AoE4World.
+
+| Matchup | Gegner | Meine Stats | Civ-Lexikon |
+|---|---|---|---|
+| ![Matchup](android-app/screenshots/matchup.jpeg) | ![Gegner](android-app/screenshots/gegner.jpeg) | ![Meine Stats](android-app/screenshots/STATS.jpeg) | ![Civ-Lexikon](android-app/screenshots/lexikon.jpeg) |
+
+Die Android-App kann als eigenes Projekt in Android Studio geöffnet werden. Eine ausführliche Anleitung steht in der [Android-README](android-app/README.md).
+
 ## Nutzung Mit Oberflaeche
 
 Am einfachsten:

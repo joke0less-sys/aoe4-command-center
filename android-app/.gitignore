@@ -1,0 +1,25 @@
+# Android Studio
+.idea/
+*.iml
+
+# Local Android SDK path
+local.properties
+
+# Gradle and build output
+.gradle/
+build/
+app/build/
+**/build/
+
+# Local verification files
+.build-check/
+.agents/
+
+# Native build output and captures
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Operating system files
+.DS_Store
+Thumbs.db
